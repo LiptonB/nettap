@@ -1,8 +1,10 @@
-use std::io::Result;
-use std::net::{TcpStream, ToSocketAddrs};
+use failure::Error;
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::process::exit;
 use std::str::FromStr;
 use structopt::StructOpt;
+
+type Result<T> = std::result::Result<T, Error>;
 
 // TODO: address could be a hostname as well
 #[derive(Debug, StructOpt)]
@@ -22,7 +24,7 @@ fn listen<A: ToSocketAddrs>(addr: A) -> Result<()> {
     Ok(())
 }
 
-fn parse_options() -> Result<(bool, impl ToSocketAddrs)> {
+fn parse_options() -> Result<(bool, SocketAddr)> {
     let opt = Opt::from_args();
 
     let (address, port): (&str, &str) = if opt.listen {
@@ -37,7 +39,8 @@ fn parse_options() -> Result<(bool, impl ToSocketAddrs)> {
     };
 
     let port = u16::from_str(port)?;
-    return Ok((opt.listen, (address, port)));
+    let addr = (address, port).to_socket_addrs()?.next().unwrap();
+    return Ok((opt.listen, addr));
 }
 
 fn main() {
