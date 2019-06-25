@@ -1,0 +1,8 @@
+[package]
+name = "nettap"
+version = "0.1.0"
+authors = ["Ben Lipton <ben.lipton@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+structopt = "0.2"
