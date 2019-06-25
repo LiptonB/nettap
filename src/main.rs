@@ -1,5 +1,5 @@
 use std::io::Result;
-use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::process::exit;
 use std::str::FromStr;
 use structopt::StructOpt;
@@ -22,7 +22,7 @@ fn listen<A: ToSocketAddrs>(addr: A) -> Result<()> {
     Ok(())
 }
 
-fn parse_options() -> Result<(bool, SocketAddr)> {
+fn parse_options() -> Result<(bool, impl ToSocketAddrs)> {
     let opt = Opt::from_args();
 
     let (address, port): (&str, &str) = if opt.listen {
@@ -36,9 +36,8 @@ fn parse_options() -> Result<(bool, SocketAddr)> {
         }
     };
 
-    let address = IpAddr::from_str(address)?;
     let port = u16::from_str(port)?;
-    return Ok((opt.listen, (address, port).into()));
+    return Ok((opt.listen, (address, port)));
 }
 
 fn main() {
