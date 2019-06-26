@@ -1,4 +1,4 @@
-use failure::Error;
+use failure::{bail, Error};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::process::exit;
 use std::str::FromStr;
@@ -31,10 +31,12 @@ fn parse_options() -> Result<(bool, SocketAddr)> {
         match opt.args.as_slice() {
             [port] => ("0.0.0.0", port),
             [address, port] => (address, port),
+            _ => bail!("Invalid number of arguments"),
         }
     } else {
         match opt.args.as_slice() {
             [address, port] => (address, port),
+            _ => bail!("Invalid number of arguments"),
         }
     };
 
