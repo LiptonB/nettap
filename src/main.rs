@@ -1,12 +1,15 @@
 use failure::{bail, Error};
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use quicli::prelude::*;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::process::exit;
 use std::str::FromStr;
 use structopt::StructOpt;
+use tokio::io;
+use tokio::net::TcpStream;
+use tokio::prelude::*;
 
 type Result<T> = std::result::Result<T, Error>;
 
-// TODO: address could be a hostname as well
 #[derive(Debug, StructOpt)]
 struct Opt {
     #[structopt(short = "l", long = "listen")]
@@ -15,9 +18,17 @@ struct Opt {
     args: Vec<String>,
 }
 
-fn connect<A: ToSocketAddrs>(addr: A) -> Result<()> {
-    let stream = TcpStream::connect(addr)?;
-    Ok(())
+fn connect(addr: &SocketAddr) {
+    let stream = TcpStream::connect(addr)
+        .and_then(|stream| {
+            println!("Created stream");
+            Ok(())
+        })
+        .map_err(|err| {
+            println!("Connection error = {:?}", err);
+        });
+
+    tokio::run(stream);
 }
 
 fn listen<A: ToSocketAddrs>(addr: A) -> Result<()> {
@@ -45,18 +56,12 @@ fn parse_options() -> Result<(bool, SocketAddr)> {
     return Ok((opt.listen, addr));
 }
 
-fn main() {
-    let result = match parse_options() {
-        Ok((true, addr)) => listen(addr),
-        Ok((false, addr)) => connect(addr),
-        Err(_) => {
-            println!("Usage");
-            exit(1);
-        }
-    };
-
-    if let Err(_) = result {
-        println!("Error");
-        exit(2);
+fn main() -> CliResult {
+    let (listen_mode, addr) = parse_options()?;
+    if listen_mode {
+        listen(addr)?;
+    } else {
+        connect(&addr);
     }
+    Ok(())
 }
