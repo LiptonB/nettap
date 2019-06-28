@@ -18,6 +18,7 @@ struct Opt {
     args: Vec<String>,
 }
 
+// TODO: If args are "1 2" why does it succeed in making a SocketAddr?
 fn connect(addr: &SocketAddr) {
     let stream = TcpStream::connect(addr)
         .and_then(|stream| {
