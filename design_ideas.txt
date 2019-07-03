@@ -1,0 +1,22 @@
+Different types of connection:
+- Listening {TCP,UDP,Unix} socket
+- Connecting {TCP,UDP,Unix} socket
+- File I/O
+- Stdio
+
+Different types of communication:
+- Regular I/O
+- "Trunk" I/O
+- Text-based Control
+- Machine-friendly Control
+
+Control operations:
+- Flush a socket
+- Open a new listener or connection
+- Prioritization?
+
+Ok, so how do we hook this all up? Listen opens a listener that produces a stream of sockets. Connect produces one socket. Stdio will be some kind of stream, I guess. We can handle the processing of each connection using tokio::spawn (they don't all need to be merged into one future). However, we do need to hook up the streams to one another.
+
+May need to have one coordinator task that handles sending output to all the connections. Maybe we have one single mpsc channel used by all connections to give their input to the coordinator, and then for each connection a second channel (can be spsc or whatever) to send data *out* each connection.
+
+Or, maybe we use/design a spmc pub/sub type channel where each consumer is entitled to all writes that happen after it gets its read end cloned. Then each connection just gets a read end of this single channel and we have no coordinator task at all.
