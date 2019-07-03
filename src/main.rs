@@ -16,6 +16,8 @@ struct Opt {
     listen: bool,
     #[structopt(min_values = 1, max_values = 2)]
     args: Vec<String>,
+    #[structopt(flatten)]
+    verbosity: Verbosity,
 }
 
 // TODO: If args are "1 2" why does it succeed in making a SocketAddr?
