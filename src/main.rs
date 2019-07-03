@@ -5,7 +5,7 @@ use std::process::exit;
 use std::str::FromStr;
 use structopt::StructOpt;
 use tokio::io;
-use tokio::net::TcpStream;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 
 type Result<T> = std::result::Result<T, Error>;
@@ -24,7 +24,7 @@ struct Opt {
 fn connect(addr: &SocketAddr) {
     let stream = TcpStream::connect(addr)
         .and_then(|stream| {
-            println!("Created stream");
+            setup_stream(stream);
             Ok(())
         })
         .map_err(|err| {
@@ -34,7 +34,19 @@ fn connect(addr: &SocketAddr) {
     tokio::run(stream);
 }
 
-fn listen<A: ToSocketAddrs>(addr: A) -> Result<()> {
+fn setup_stream<S: AsyncRead + AsyncWrite>(socket: S) {}
+
+fn listen(addr: &SocketAddr) -> Result<()> {
+    let listener = TcpListener::bind(addr)?;
+    tokio::spawn(
+        listener
+            .incoming()
+            .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
+            .for_each(|socket| {
+                setup_stream(socket);
+                Ok(())
+            }),
+    );
     Ok(())
 }
 
@@ -59,12 +71,20 @@ fn parse_options() -> Result<(bool, SocketAddr)> {
     return Ok((opt.listen, addr));
 }
 
+fn coordinator() -> impl Future<Item = (), Error = ()> {
+    future::ok(())
+}
+
 fn main() -> CliResult {
     let (listen_mode, addr) = parse_options()?;
-    if listen_mode {
-        listen(addr)?;
-    } else {
-        connect(&addr);
-    }
+    tokio::run(future::lazy(move || {
+        if listen_mode {
+            listen(&addr);
+        } else {
+            connect(&addr);
+        }
+
+        coordinator()
+    }));
     Ok(())
 }
