@@ -5,7 +5,9 @@ authors = ["Ben Lipton <ben.lipton@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-failure = "0.1"
-quicli = "0.4"
-structopt = "0.2"
-tokio = "0.1"
+bytes = "0.4.12"
+failure = "0.1.5"
+futures = "0.1.28"
+quicli = "0.4.0"
+structopt = "0.2.18"
+tokio = "0.1.22"
