@@ -57,7 +57,7 @@ impl Coordinator {
     }
 
     fn flush_buffer(&mut self) -> Poll<(), Error> {
-        if let Some(data) = self.buffer {
+        Ok(if let Some(data) = self.buffer {
             let mut any_still_buffered = false;
             for (idx, conn) in self
                 .outgoing
@@ -65,6 +65,8 @@ impl Coordinator {
                 .enumerate()
                 .filter(|(idx, _)| self.is_buffered[*idx])
             {
+                // TODO: the error handling here is wrong. What if one of the connections closes or
+                // just becomes unavailable for a while?
                 if let Async::Ready(_) = conn.poll_write(&data)? {
                     self.is_buffered[idx] = false;
                 } else {
@@ -73,18 +75,31 @@ impl Coordinator {
             }
 
             if any_still_buffered {
-                Ok(Async::NotReady)
+                Async::NotReady
             } else {
-                Ok(Async::Ready(()))
+                Async::Ready(())
             }
         } else {
-            Ok(Async::Ready(()))
-        }
+            Async::Ready(())
+        })
     }
 
     fn shutdown_all(&self) -> Poll<(), Error> {}
 
-    fn poll_flush_all(&self) -> Poll<(), Error> {}
+    fn poll_flush_all(&self) -> Poll<(), Error> {
+        let mut any_not_ready = false;
+        for conn in self.outgoing {
+            if let Async::NotReady = conn.poll_flush()? {
+                any_not_ready = true;
+            }
+        }
+
+        Ok(if any_not_ready {
+            Async::NotReady
+        } else {
+            Async::Ready(())
+        })
+    }
 }
 
 impl Future for Coordinator {
@@ -101,13 +116,15 @@ impl Future for Coordinator {
                     self.outgoing.push(conn);
                     self.is_buffered.push(self.buffer.is_some());
                 }
-                Async::Ready(None) => {
-                    try_ready!(self.shutdown_all());
-                    return Ok(Async::Ready(()));
-                }
                 Async::NotReady => {
                     try_ready!(self.poll_flush_all());
                     return Ok(Async::NotReady);
+                }
+                Async::Ready(None) => {
+                    // TODO: If any of these returns NotReady this is probably going to get screwed
+                    // up when we get polled next.
+                    try_ready!(self.shutdown_all());
+                    return Ok(Async::Ready(()));
                 }
             }
         }
