@@ -79,7 +79,7 @@ fn parse_options() -> Result<(bool, SocketAddr)> {
 fn main() -> CliResult {
     let (listen_mode, addr) = parse_options()?;
     tokio::run(future::lazy(move || {
-        let (coordinator, connection) = Coordinator::new();
+        let (coordinator, connection, add_connection) = Coordinator::new();
 
         if listen_mode {
             listen(&addr, connection.clone());

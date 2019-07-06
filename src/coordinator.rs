@@ -1,4 +1,5 @@
 use bytes::BytesMut;
+use failure::Error;
 use futures::{try_ready, Poll};
 use tokio::prelude::*;
 use tokio::sync::mpsc;
@@ -12,38 +13,44 @@ enum Message {
 
 use Message::*;
 
-pub struct Coordinator<S: Stream> {
-    incoming: S,
+pub struct Coordinator {
+    incoming: Box<Stream<Item = Message, Error = Error>>,
     outgoing: Vec<Box<dyn AsyncWrite>>,
 }
 
-pub fn coordinator<S>() -> (
-    Coordinator<S>,
-    Connection,
-    mpsc::Sender<Box<dyn AsyncWrite>>,
-)
-where
-    S: Stream,
-{
-    let (data_tx, data_rx) = mpsc::channel(1024);
-    let (conn_tx, conn_rx) = mpsc::channel(1024);
-    let stream = data_rx
-        .map(|data| Data(data))
-        .select(conn_rx.map(|conn| Connection(conn)));
+impl Coordinator {
+    pub fn new() -> (Coordinator, Connection, mpsc::Sender<Box<dyn AsyncWrite>>) {
+        let (data_tx, data_rx) = mpsc::channel(1024);
+        let (conn_tx, conn_rx) = mpsc::channel(1024);
+        let stream = data_rx
+            .map(|data| Data(data))
+            .map_err(|err| err.into())
+            .select(
+                conn_rx
+                    .map(|conn| Connection(conn))
+                    .map_err(|err| err.into()),
+            );
 
-    (
-        Coordinator {
-            incoming: stream,
-            outgoing: Vec::new(),
-        },
-        Connection { incoming: data_tx },
-        conn_tx,
-    )
+        (
+            Coordinator {
+                incoming: Box::new(stream),
+                outgoing: Vec::new(),
+            },
+            Connection { incoming: data_tx },
+            conn_tx,
+        )
+    }
+
+    fn write_to_all(&self, data: BytesMut) -> Poll<(), Error> {}
+
+    fn shutdown_all(&self) -> Poll<(), Error> {}
+
+    fn poll_flush_all(&self) -> Poll<(), Error> {}
 }
 
-impl<S: Stream> Future for Coordinator<S> {
+impl Future for Coordinator {
     type Item = ();
-    type Error = ();
+    type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         loop {
