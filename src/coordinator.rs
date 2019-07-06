@@ -84,9 +84,9 @@ impl Coordinator {
         })
     }
 
-    fn poll_flush_all(&self) -> Poll<(), Error> {
+    fn poll_flush_all(&mut self) -> Poll<(), Error> {
         let mut any_not_ready = false;
-        for conn in self.outgoing {
+        for conn in &mut self.outgoing {
             if let Async::NotReady = conn.poll_flush()? {
                 any_not_ready = true;
             }
@@ -99,9 +99,9 @@ impl Coordinator {
         })
     }
 
-    fn shutdown_all(&self) -> Poll<(), Error> {
+    fn shutdown_all(&mut self) -> Poll<(), Error> {
         let mut any_not_ready = false;
-        for conn in self.outgoing {
+        for conn in &mut self.outgoing {
             if let Async::NotReady = conn.shutdown()? {
                 any_not_ready = true;
             }
