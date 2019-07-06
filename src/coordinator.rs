@@ -57,18 +57,18 @@ impl Coordinator {
     }
 
     fn flush_buffer(&mut self) -> Poll<(), Error> {
-        Ok(if let Some(data) = self.buffer {
+        Ok(if let Some(data) = &self.buffer {
             let mut any_still_buffered = false;
-            for (idx, conn) in self
+            for (conn, is_buffered) in self
                 .outgoing
-                .iter()
-                .enumerate()
-                .filter(|(idx, _)| self.is_buffered[*idx])
+                .iter_mut()
+                .zip(self.is_buffered.iter_mut())
+                .filter(|(_, is_buffered)| **is_buffered)
             {
                 // TODO: the error handling here is wrong. What if one of the connections closes or
                 // just becomes unavailable for a while?
                 if let Async::Ready(_) = conn.poll_write(&data)? {
-                    self.is_buffered[idx] = false;
+                    *is_buffered = false;
                 } else {
                     any_still_buffered = true;
                 }
