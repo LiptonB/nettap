@@ -23,7 +23,11 @@ pub struct Coordinator {
 }
 
 impl Coordinator {
-    pub fn new() -> (Coordinator, Connection, mpsc::Sender<Box<dyn AsyncWrite>>) {
+    pub fn new() -> (
+        Coordinator,
+        mpsc::Sender<BytesMut>,
+        mpsc::Sender<Box<dyn AsyncWrite>>,
+    ) {
         let (data_tx, data_rx) = mpsc::channel(1024);
         let (conn_tx, conn_rx) = mpsc::channel(1024);
         let stream = data_rx
@@ -42,11 +46,12 @@ impl Coordinator {
                 buffer: None,
                 is_buffered: Vec::new(),
             },
-            Connection { incoming: data_tx },
+            data_tx,
             conn_tx,
         )
     }
 
+    // TODO: should actually write to all but the one it came from
     fn write_to_all(&mut self, data: BytesMut) -> Poll<(), Error> {
         debug_assert!(self.buffer.is_none());
         self.buffer = Some(data);

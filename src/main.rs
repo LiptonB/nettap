@@ -1,10 +1,13 @@
+use bytes::BytesMut;
 use failure::{bail, Error};
 use quicli::prelude::*;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use structopt::StructOpt;
+use tokio::codec::{BytesCodec, FramedRead};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
+use tokio::sync::mpsc;
 
 mod connection;
 mod coordinator;
@@ -23,13 +26,20 @@ struct Opt {
     verbosity: Verbosity,
 }
 
-fn setup_stream<S: AsyncRead + AsyncWrite>(socket: S, conn: Connection) {}
+fn setup_stream<S>(socket: S, data_sender: mpsc::Sender<BytesMut>)
+where
+    S: AsyncRead + AsyncWrite + Send,
+{
+    let (read, write) = socket.split();
+    let stream = FramedRead::new(read, BytesCodec::new());
+    tokio::spawn(stream.forward(data_sender));
+}
 
 // TODO: If args are "1 2" why does it succeed in making a SocketAddr?
-fn connect(addr: &SocketAddr, conn: Connection) {
+fn connect(addr: &SocketAddr, data_sender: mpsc::Sender<BytesMut>) {
     let stream = TcpStream::connect(addr)
         .and_then(|stream| {
-            setup_stream(stream, conn);
+            setup_stream(stream, data_sender);
             Ok(())
         })
         .map_err(|err| {
@@ -39,15 +49,15 @@ fn connect(addr: &SocketAddr, conn: Connection) {
     tokio::run(stream);
 }
 
-fn listen(addr: &SocketAddr, conn: Connection) -> Result<()> {
+fn listen(addr: &SocketAddr, data_sender: mpsc::Sender<BytesMut>) -> Result<()> {
     let listener = TcpListener::bind(addr)?;
     tokio::spawn(
         listener
             .incoming()
             .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
             .for_each(move |socket| {
-                let conn = conn.clone();
-                setup_stream(socket, conn);
+                let data_sender = data_sender.clone();
+                setup_stream(socket, data_sender);
                 Ok(())
             }),
     );
@@ -79,12 +89,12 @@ fn parse_options() -> Result<(bool, SocketAddr)> {
 fn main() -> CliResult {
     let (listen_mode, addr) = parse_options()?;
     tokio::run(future::lazy(move || {
-        let (coordinator, connection, add_connection) = Coordinator::new();
+        let (coordinator, data_sender, connection_sender) = Coordinator::new();
 
         if listen_mode {
-            listen(&addr, connection.clone());
+            listen(&addr, data_sender);
         } else {
-            connect(&addr, connection.clone());
+            connect(&addr, data_sender);
         }
 
         future::ok(())
