@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 mod connection;
 mod coordinator;
-use connection::Connection;
+use connection::tokio_connection;
 use coordinator::Coordinator;
 
 type Result<T> = std::result::Result<T, Error>;
