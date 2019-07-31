@@ -17,7 +17,7 @@ where
     let (socket_out, socket_in) = framed.split();
 
     let in_fut = socket_in.from_err().forward(incoming);
-    let out_fut = outgoing.forward(socket_out.sink_from_err());
+    let out_fut = outgoing.forward(socket_out);
     // TODO: Are we happy with this "swallow all errors" business
     in_fut.join(out_fut).map(|_| ()).map_err(|_| ())
 }

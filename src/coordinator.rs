@@ -4,8 +4,6 @@ use futures::{try_ready, Poll};
 use tokio::prelude::*;
 use tokio::sync::mpsc;
 
-use crate::connection::Connection;
-
 enum Message {
     Data(BytesMut),
     Connection(Box<dyn AsyncWrite>),
