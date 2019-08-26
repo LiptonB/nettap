@@ -1,5 +1,6 @@
-use bytes::BytesMut;
+use bytes::Bytes;
 use failure::{bail, Error};
+use futures::sync::mpsc;
 use quicli::prelude::*;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
@@ -7,7 +8,6 @@ use structopt::StructOpt;
 use tokio::codec::{BytesCodec, FramedRead};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
-use tokio::sync::mpsc;
 
 mod connection;
 mod coordinator;
@@ -26,30 +26,34 @@ struct Opt {
     verbosity: Verbosity,
 }
 
-fn setup_stream<S>(socket: S, data_sender: mpsc::Sender<BytesMut>)
-where
-    S: AsyncRead + AsyncWrite + Send,
+fn setup_stream<S>(
+    socket: S,
+    data_sender: mpsc::UnboundedSender<Bytes>,
+    data_receiver: mpsc::UnboundedReceiver<Bytes>,
+) where
+    S: AsyncRead + AsyncWrite + Send + 'static,
 {
-    let (read, write) = socket.split();
-    let stream = FramedRead::new(read, BytesCodec::new());
-    tokio::spawn(stream.forward(data_sender));
+    // TODO: Can't we make the function accept these the way they are?
+    let data_sender = data_sender.sink_from_err();
+    let data_receiver = data_receiver.map_err(|nothing: ()| unreachable!());
+    tokio::spawn(tokio_connection(data_sender, data_receiver, socket));
 }
 
 // TODO: If args are "1 2" why does it succeed in making a SocketAddr?
-fn connect(addr: &SocketAddr, data_sender: mpsc::Sender<BytesMut>) {
+fn connect(addr: &SocketAddr, data_sender: mpsc::UnboundedSender<Bytes>) {
+    let (sender, receiver) = mpsc::unbounded();
+
     let stream = TcpStream::connect(addr)
         .and_then(|stream| {
-            setup_stream(stream, data_sender);
+            setup_stream(stream, data_sender, receiver);
             Ok(())
         })
-        .map_err(|err| {
-            println!("Connection error = {:?}", err);
-        });
+        .map_err(|err| eprintln!("Connection error = {:?}", err));
 
     tokio::run(stream);
 }
 
-fn listen(addr: &SocketAddr, data_sender: mpsc::Sender<BytesMut>) -> Result<()> {
+fn listen(addr: &SocketAddr, data_sender: mpsc::UnboundedSender<Bytes>) -> Result<()> {
     let listener = TcpListener::bind(addr)?;
     tokio::spawn(
         listener
@@ -57,7 +61,8 @@ fn listen(addr: &SocketAddr, data_sender: mpsc::Sender<BytesMut>) -> Result<()> 
             .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
             .for_each(move |socket| {
                 let data_sender = data_sender.clone();
-                setup_stream(socket, data_sender);
+                let (sender, receiver) = mpsc::unbounded();
+                setup_stream(socket, data_sender, receiver);
                 Ok(())
             }),
     );
@@ -89,7 +94,12 @@ fn parse_options() -> Result<(bool, SocketAddr)> {
 fn main() -> CliResult {
     let (listen_mode, addr) = parse_options()?;
     tokio::run(future::lazy(move || {
-        let (coordinator, data_sender, connection_sender) = Coordinator::new();
+        let (data_sender, data_receiver) = mpsc::unbounded();
+        let (connection_sender, connection_receiver) = mpsc::unbounded();
+        let coordinator = Coordinator::new(
+            data_receiver.map_err(|nil: ()| unreachable!()),
+            connection_receiver.map_err(|nil: ()| unreachable!()),
+        );
 
         if listen_mode {
             listen(&addr, data_sender);
