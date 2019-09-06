@@ -1,56 +1,45 @@
-use bytes::BytesMut;
+use bytes::Bytes;
 use failure::Error;
 use futures::{try_ready, Poll};
 use tokio::prelude::*;
-use tokio::sync::mpsc;
 
 enum Message {
-    Data(BytesMut),
-    Connection(Box<dyn AsyncWrite>),
+    Data(Bytes),
+    Connection(Box<dyn Sink<SinkItem = Bytes, SinkError = Error>>),
 }
 
 use Message::*;
 
 pub struct Coordinator {
-    // TODO: does this really have to be a trait object? The type is complicated but it's only ever
-    // going to be one type
-    incoming: Box<Stream<Item = Message, Error = Error>>,
-    outgoing: Vec<Box<dyn AsyncWrite>>,
-    buffer: Option<BytesMut>,
+    incoming: Box<dyn Stream<Item = Message, Error = Error>>,
+    outgoing: Vec<Box<dyn Sink<SinkItem = Bytes, SinkError = Error>>>,
+    buffer: Option<Bytes>,
     is_buffered: Vec<bool>,
 }
 
 impl Coordinator {
-    pub fn new() -> (
-        Coordinator,
-        mpsc::Sender<BytesMut>,
-        mpsc::Sender<Box<dyn AsyncWrite>>,
-    ) {
-        let (data_tx, data_rx) = mpsc::channel(1024);
-        let (conn_tx, conn_rx) = mpsc::channel(1024);
-        let stream = data_rx
-            .map(|data| Data(data))
-            .map_err(|err| err.into())
-            .select(
-                conn_rx
-                    .map(|conn| Connection(conn))
-                    .map_err(|err| err.into()),
-            );
+    pub fn new<D, C>(data_rx: D, conn_rx: C) -> Coordinator
+    where
+        D: Stream<Item = Bytes, Error = Error> + 'static,
+        C: Stream<Item = Box<dyn Sink<SinkItem = Bytes, SinkError = Error>>, Error = Error>
+            + 'static,
+    {
+        let data_stream = data_rx.map(|data| Data(data)).map_err(|err| err.into());
+        let conn_stream = conn_rx
+            .map(|conn| Connection(conn))
+            .map_err(|err| err.into());
+        let stream = data_stream.select(conn_stream);
 
-        (
-            Coordinator {
-                incoming: Box::new(stream),
-                outgoing: Vec::new(),
-                buffer: None,
-                is_buffered: Vec::new(),
-            },
-            data_tx,
-            conn_tx,
-        )
+        Coordinator {
+            incoming: Box::new(stream),
+            outgoing: Vec::new(),
+            buffer: None,
+            is_buffered: Vec::new(),
+        }
     }
 
     // TODO: should actually write to all but the one it came from
-    fn write_to_all(&mut self, data: BytesMut) -> Poll<(), Error> {
+    fn write_to_all(&mut self, data: Bytes) -> Poll<(), Error> {
         debug_assert!(self.buffer.is_none());
         self.buffer = Some(data);
         for item in self.is_buffered.iter_mut() {
@@ -70,10 +59,9 @@ impl Coordinator {
             {
                 // TODO: the error handling here is wrong. What if one of the connections closes or
                 // just becomes unavailable for a while?
-                if let Async::Ready(_) = conn.poll_write(&data)? {
-                    *is_buffered = false;
-                } else {
-                    any_still_buffered = true;
+                match conn.start_send(&data)? {
+                    AsyncSink::Ready => *is_buffered = false;
+                    AsyncSink::NotReady(_) => any_still_buffered = true;
                 }
             }
 
