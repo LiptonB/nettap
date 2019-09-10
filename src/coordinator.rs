@@ -49,7 +49,7 @@ impl Coordinator {
     }
 
     fn flush_buffer(&mut self) -> Poll<(), Error> {
-        Ok(if let Some(data) = &self.buffer {
+        Ok(if let Some(data) = self.buffer.take() {
             let mut any_still_buffered = false;
             for (conn, is_buffered) in self
                 .outgoing
@@ -59,9 +59,9 @@ impl Coordinator {
             {
                 // TODO: the error handling here is wrong. What if one of the connections closes or
                 // just becomes unavailable for a while?
-                match conn.start_send(&data)? {
-                    AsyncSink::Ready => *is_buffered = false;
-                    AsyncSink::NotReady(_) => any_still_buffered = true;
+                match conn.start_send(data.clone())? {
+                    AsyncSink::Ready => *is_buffered = false,
+                    AsyncSink::NotReady(_) => any_still_buffered = true,
                 }
             }
 
@@ -75,10 +75,10 @@ impl Coordinator {
         })
     }
 
-    fn poll_flush_all(&mut self) -> Poll<(), Error> {
+    fn poll_complete_all(&mut self) -> Poll<(), Error> {
         let mut any_not_ready = false;
         for conn in &mut self.outgoing {
-            if let Async::NotReady = conn.poll_flush()? {
+            if let Async::NotReady = conn.poll_complete()? {
                 any_not_ready = true;
             }
         }
@@ -90,20 +90,11 @@ impl Coordinator {
         })
     }
 
-    fn shutdown_all(&mut self) -> Poll<(), Error> {
-        let mut any_not_ready = false;
-        for conn in &mut self.outgoing {
-            if let Async::NotReady = conn.shutdown()? {
-                any_not_ready = true;
-            }
-        }
+    /* TODO
+    fn close_all(&mut self) -> Poll<(), Error> {
 
-        Ok(if any_not_ready {
-            Async::NotReady
-        } else {
-            Async::Ready(())
-        })
     }
+    */
 }
 
 impl Future for Coordinator {
@@ -121,13 +112,14 @@ impl Future for Coordinator {
                     self.is_buffered.push(self.buffer.is_some());
                 }
                 Async::NotReady => {
-                    try_ready!(self.poll_flush_all());
+                    try_ready!(self.poll_complete_all());
                     return Ok(Async::NotReady);
                 }
                 Async::Ready(None) => {
                     // TODO: If any of these returns NotReady this is probably going to get screwed
                     // up when we get polled next.
-                    try_ready!(self.shutdown_all());
+                    // TODO: should probably be close_all but it's not implemented yet
+                    try_ready!(self.poll_complete_all());
                     return Ok(Async::Ready(()));
                 }
             }
