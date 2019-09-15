@@ -5,7 +5,6 @@ use quicli::prelude::*;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use structopt::StructOpt;
-use tokio::codec::{BytesCodec, FramedRead};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 

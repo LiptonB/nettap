@@ -21,11 +21,3 @@ where
     // TODO: Are we happy with this "swallow all errors" business
     in_fut.join(out_fut).map(|_| ()).map_err(|_| ())
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-}

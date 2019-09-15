@@ -126,3 +126,36 @@ impl Future for Coordinator {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::coordinator::*;
+
+    #[test]
+    fn creation_and_wait_succeeds() {
+        let data_rx = stream::empty();
+        let conn_rx = stream::empty();
+
+        let c = Coordinator::new(data_rx, conn_rx);
+        c.wait().expect("Execution failed");
+    }
+
+    #[test]
+    fn send_with_no_conns_succeeds() {
+        let data_rx = stream::once(Ok(Bytes::from("somestr")));
+        let conn_rx = stream::empty();
+
+        let c = Coordinator::new(data_rx, conn_rx);
+        c.wait().expect("Execution failed");
+    }
+
+    #[test]
+    fn send_with_conn_transfers_data() {
+        let data_rx = stream::once(Ok(Bytes::from("somestr")));
+        // TODO
+        let conn_rx = stream::empty();
+
+        let c = Coordinator::new(data_rx, conn_rx);
+        c.wait().expect("Execution failed");
+    }
+}
