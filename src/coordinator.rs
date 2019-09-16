@@ -3,16 +3,19 @@ use failure::Error;
 use futures::{try_ready, Poll};
 use tokio::prelude::*;
 
+type ByteSink = Box<dyn Sink<SinkItem = Bytes, SinkError = Error> + Send>;
+type ByteStream = Box<dyn Stream<Item = Message, Error = Error> + Send>;
+
 enum Message {
     Data(Bytes),
-    Connection(Box<dyn Sink<SinkItem = Bytes, SinkError = Error>>),
+    Connection(ByteSink),
 }
 
 use Message::*;
 
 pub struct Coordinator {
-    incoming: Box<dyn Stream<Item = Message, Error = Error>>,
-    outgoing: Vec<Box<dyn Sink<SinkItem = Bytes, SinkError = Error>>>,
+    incoming: ByteStream,
+    outgoing: Vec<ByteSink>,
     buffer: Option<Bytes>,
     is_buffered: Vec<bool>,
 }
@@ -20,9 +23,8 @@ pub struct Coordinator {
 impl Coordinator {
     pub fn new<D, C>(data_rx: D, conn_rx: C) -> Coordinator
     where
-        D: Stream<Item = Bytes, Error = Error> + 'static,
-        C: Stream<Item = Box<dyn Sink<SinkItem = Bytes, SinkError = Error>>, Error = Error>
-            + 'static,
+        D: Stream<Item = Bytes, Error = Error> + Send + 'static,
+        C: Stream<Item = ByteSink, Error = Error> + Send + 'static,
     {
         let data_stream = data_rx.map(|data| Data(data)).map_err(|err| err.into());
         let conn_stream = conn_rx
@@ -131,13 +133,18 @@ impl Future for Coordinator {
 mod tests {
     use crate::coordinator::*;
 
+    fn run_future<E: Send>(f: impl Future<Item = (), Error = E> + Send + 'static) {
+        let f = f.map_err(|_| panic!("returned error"));
+        tokio::run(f);
+    }
+
     #[test]
     fn creation_and_wait_succeeds() {
         let data_rx = stream::empty();
         let conn_rx = stream::empty();
 
         let c = Coordinator::new(data_rx, conn_rx);
-        c.wait().expect("Execution failed");
+        run_future(c);
     }
 
     #[test]
@@ -146,7 +153,7 @@ mod tests {
         let conn_rx = stream::empty();
 
         let c = Coordinator::new(data_rx, conn_rx);
-        c.wait().expect("Execution failed");
+        run_future(c);
     }
 
     #[test]
@@ -156,6 +163,6 @@ mod tests {
         let conn_rx = stream::empty();
 
         let c = Coordinator::new(data_rx, conn_rx);
-        c.wait().expect("Execution failed");
+        run_future(c);
     }
 }
