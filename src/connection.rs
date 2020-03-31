@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use failure::Error;
-use tokio::codec::{BytesCodec, Framed};
 use tokio::prelude::*;
+use tokio_util::codec::{BytesCodec, Framed};
 
 pub fn tokio_connection<I, O, S>(
     incoming: I,

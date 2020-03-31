@@ -1,12 +1,12 @@
 use bytes::Bytes;
 use failure::{bail, Error};
-use futures::sync::mpsc;
-use quicli::prelude::*;
+use futures::channel::mpsc;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use structopt::StructOpt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
+use clap_verbosity_flag::Verbosity;
 
 mod connection;
 mod coordinator;
@@ -49,7 +49,7 @@ fn connect(addr: &SocketAddr, data_sender: mpsc::UnboundedSender<Bytes>) {
         })
         .map_err(|err| eprintln!("Connection error = {:?}", err));
 
-    tokio::run(stream);
+    tokio::spawn(stream);
 }
 
 fn listen(addr: &SocketAddr, data_sender: mpsc::UnboundedSender<Bytes>) -> Result<()> {
@@ -90,23 +90,21 @@ fn parse_options() -> Result<(bool, SocketAddr)> {
     return Ok((opt.listen, addr));
 }
 
-fn main() -> CliResult {
+#[tokio::main]
+async fn main() {
     let (listen_mode, addr) = parse_options()?;
-    tokio::run(future::lazy(move || {
-        let (data_sender, data_receiver) = mpsc::unbounded();
-        let (connection_sender, connection_receiver) = mpsc::unbounded();
-        let coordinator = Coordinator::new(
-            data_receiver.map_err(|nil: ()| unreachable!()),
-            connection_receiver.map_err(|nil: ()| unreachable!()),
-        );
+    let (data_sender, data_receiver) = mpsc::unbounded();
+    let (connection_sender, connection_receiver) = mpsc::unbounded();
+    let coordinator = Coordinator::new(
+        data_receiver.map_err(|nil: ()| unreachable!()),
+        connection_receiver.map_err(|nil: ()| unreachable!()),
+    );
 
-        if listen_mode {
-            listen(&addr, data_sender);
-        } else {
-            connect(&addr, data_sender);
-        }
+    if listen_mode {
+        listen(&addr, data_sender);
+    } else {
+        connect(&addr, data_sender);
+    }
 
-        future::ok(())
-    }));
-    Ok(())
+    future::ok(())
 }

@@ -5,9 +5,10 @@ authors = ["Ben Lipton <ben.lipton@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-bytes = "0.4.12"
+bytes = "0.5.4"
 failure = "0.1.5"
-futures = "0.1.28"
-quicli = "0.4.0"
+futures = "0.3.0"
 structopt = "0.2.18"
-tokio = "0.1.22"
+tokio = { version = "0.2.13", features = ["full"] }
+tokio-util = { version = "0.3.1", features = ["codec"] }
+clap-verbosity-flag = "0.3.1"
