@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use clap_verbosity_flag::Verbosity;
 use failure::{bail, Error};
 use futures::channel::mpsc;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -6,7 +7,6 @@ use std::str::FromStr;
 use structopt::StructOpt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
-use clap_verbosity_flag::Verbosity;
 
 mod connection;
 mod coordinator;
