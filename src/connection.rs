@@ -1,11 +1,11 @@
 use bytes::{Bytes, BytesMut};
-use futures::stream::StreamExt;
 use futures::sink::{Sink, SinkExt};
+use futures::stream::StreamExt;
+use log::error;
+use std::marker::Unpin;
 use tokio::prelude::*;
 use tokio::{join, stream::Stream, sync::mpsc};
 use tokio_util::codec::{BytesCodec, Framed};
-use log::error;
-use std::marker::Unpin;
 
 pub async fn tokio_connection<R, S>(sender: mpsc::Sender<Bytes>, receiver: R, socket: S)
 where
