@@ -1,7 +1,5 @@
-use bytes::Bytes;
 use clap_verbosity_flag::Verbosity;
 use failure::{bail, Error};
-use futures::channel::mpsc;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use structopt::StructOpt;
@@ -25,6 +23,7 @@ struct Opt {
     verbosity: Verbosity,
 }
 
+/*
 fn setup_stream<S>(
     socket: S,
     data_sender: mpsc::UnboundedSender<Bytes>,
@@ -37,21 +36,16 @@ fn setup_stream<S>(
     let data_receiver = data_receiver.map_err(|nothing: ()| unreachable!());
     tokio::spawn(tokio_connection(data_sender, data_receiver, socket));
 }
+*/
 
 // TODO: If args are "1 2" why does it succeed in making a SocketAddr?
-fn connect(addr: &SocketAddr, data_sender: mpsc::UnboundedSender<Bytes>) {
-    let (sender, receiver) = mpsc::unbounded();
-
-    let stream = TcpStream::connect(addr)
-        .and_then(|stream| {
-            setup_stream(stream, data_sender, receiver);
-            Ok(())
-        })
-        .map_err(|err| eprintln!("Connection error = {:?}", err));
-
-    tokio::spawn(stream);
+async fn connect(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()> {
+    let stream = TcpStream::connect(addr).await?;
+    coordinator.add_connection(tokio_connection::new_tokio_connection(stream));
+    Ok(())
 }
 
+/*
 fn listen(addr: &SocketAddr, data_sender: mpsc::UnboundedSender<Bytes>) -> Result<()> {
     let listener = TcpListener::bind(addr)?;
     tokio::spawn(
@@ -67,6 +61,7 @@ fn listen(addr: &SocketAddr, data_sender: mpsc::UnboundedSender<Bytes>) -> Resul
     );
     Ok(())
 }
+*/
 
 fn parse_options() -> Result<(bool, SocketAddr)> {
     let opt = Opt::from_args();
@@ -90,21 +85,21 @@ fn parse_options() -> Result<(bool, SocketAddr)> {
     return Ok((opt.listen, addr));
 }
 
-#[tokio::main]
-async fn main() {
+async fn run_main() -> Result<()> {
     let (listen_mode, addr) = parse_options()?;
-    let (data_sender, data_receiver) = mpsc::unbounded();
-    let (connection_sender, connection_receiver) = mpsc::unbounded();
-    let coordinator = Coordinator::new(
-        data_receiver.map_err(|nil: ()| unreachable!()),
-        connection_receiver.map_err(|nil: ()| unreachable!()),
-    );
+    let coordinator = Coordinator::new();
 
     if listen_mode {
-        listen(&addr, data_sender);
+        //listen(&addr, data_sender);
     } else {
-        connect(&addr, data_sender);
+        connect(&addr, &mut coordinator).await?;
     }
 
-    future::ok(())
+    tokio::spawn(coordinator.run());
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() {
+    run_main().await.expect("Error in main");
 }

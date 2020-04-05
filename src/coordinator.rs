@@ -32,6 +32,7 @@ impl Coordinator {
         }
     }
 
+    /*
     pub async fn run(self) {
         while let Some((sender, message)) = self.incoming.next().await {
             match message {
@@ -46,6 +47,7 @@ impl Coordinator {
             }
         }
     }
+    */
 
     pub fn add_connection(&mut self, nc: NewConnection) {
         let (input_sender, input_receiver) = mpsc::channel(CHANNEL_CAPACITY);
