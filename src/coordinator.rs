@@ -1,15 +1,75 @@
 use bytes::Bytes;
-use failure::Error;
-use futures::{try_ready, Poll};
-use tokio::prelude::*;
+use futures::prelude::*;
+use log::error;
+use tokio::stream::StreamMap;
+use tokio::sync::{broadcast, mpsc};
+use uuid::Uuid;
 
-type ByteSink = Box<dyn Sink<SinkItem = Bytes, SinkError = Error> + Send>;
-type ByteStream = Box<dyn Stream<Item = Message, Error = Error> + Send>;
+use crate::connection::{
+    DataStream,
+    Message::{self, *},
+    NewConnection,
+};
 
-enum Message {
-    Data(Bytes),
-    Connection(ByteSink),
+const CHANNEL_CAPACITY: usize = 10;
+
+/*
+type ByteSink = Box<dyn Sink<Bytes> + Send>;
+type ByteStream = Box<dyn Stream<Item = Message> + Send>;
+*/
+
+pub struct Coordinator {
+    incoming: StreamMap<Uuid, mpsc::Receiver<Message>>,
+    broadcast_sender: broadcast::Sender<(Uuid, Bytes)>,
 }
+
+impl Coordinator {
+    pub fn new() -> Coordinator {
+        let (sender, _) = broadcast::channel(CHANNEL_CAPACITY);
+        Coordinator {
+            incoming: StreamMap::new(),
+            broadcast_sender: sender,
+        }
+    }
+
+    pub async fn run(self) {
+        while let Some((sender, message)) = self.incoming.next().await {
+            match message {
+                Data(bytes) => {
+                    if let Err(err) = self.broadcast_sender.send((sender, bytes)) {
+                        error!("Send error: {:?}", err);
+                    }
+                }
+                NewConnection(nc) => {
+                    self.add_connection(nc);
+                }
+            }
+        }
+    }
+
+    pub fn add_connection(&mut self, nc: NewConnection) {
+        let (input_sender, input_receiver) = mpsc::channel(CHANNEL_CAPACITY);
+        let output_receiver = self.broadcast_sender.subscribe();
+        let id = Uuid::new_v4();
+        let output_receiver = filter_receiver(output_receiver, id);
+        self.incoming.insert(id, input_receiver);
+        tokio::spawn(nc(input_sender, output_receiver));
+    }
+}
+
+pub fn filter_receiver(receiver: broadcast::Receiver<(Uuid, Bytes)>, id: Uuid) -> DataStream {
+    Box::new(receiver.filter_map(
+        |(msg_id, data)| {
+            if id == msg_id {
+                None
+            } else {
+                Some(data)
+            }
+        },
+    ))
+}
+
+/*
 
 use Message::*;
 
@@ -100,14 +160,13 @@ impl Coordinator {
 }
 
 impl Future for Coordinator {
-    type Item = ();
-    type Error = Error;
+    type Output = Result<Error>;
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         try_ready!(self.flush_buffer());
 
         loop {
-            match self.incoming.poll()? {
+            match self.incoming.poll(cx)? {
                 Async::Ready(Some(Data(data))) => try_ready!(self.write_to_all(data)),
                 Async::Ready(Some(Connection(conn))) => {
                     self.outgoing.push(conn);
@@ -128,6 +187,7 @@ impl Future for Coordinator {
         }
     }
 }
+*/
 
 #[cfg(test)]
 mod tests {
