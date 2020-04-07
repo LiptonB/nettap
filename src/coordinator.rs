@@ -54,7 +54,7 @@ impl Coordinator {
 }
 
 pub fn filter_receiver(receiver: broadcast::Receiver<(Uuid, Bytes)>, id: Uuid) -> DataStream {
-    Box::new(receiver.filter_map(|received| {
+    Box::new(receiver.filter_map(move |received| {
         let (msg_id, data) = received.ok()?;
         if msg_id == id {
             None
