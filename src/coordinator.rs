@@ -1,8 +1,9 @@
 use bytes::Bytes;
-use futures::prelude::*;
 use log::error;
-use tokio::stream::StreamMap;
-use tokio::sync::{broadcast, mpsc};
+use tokio::{
+    stream::{StreamExt, StreamMap},
+    sync::{broadcast, mpsc},
+};
 use uuid::Uuid;
 
 use crate::connection::{
@@ -32,7 +33,6 @@ impl Coordinator {
         }
     }
 
-    /*
     pub async fn run(self) {
         while let Some((sender, message)) = self.incoming.next().await {
             match message {
@@ -47,7 +47,6 @@ impl Coordinator {
             }
         }
     }
-    */
 
     pub fn add_connection(&mut self, nc: NewConnection) {
         let (input_sender, input_receiver) = mpsc::channel(CHANNEL_CAPACITY);
@@ -60,15 +59,14 @@ impl Coordinator {
 }
 
 pub fn filter_receiver(receiver: broadcast::Receiver<(Uuid, Bytes)>, id: Uuid) -> DataStream {
-    Box::new(receiver.filter_map(
-        |(msg_id, data)| {
-            if id == msg_id {
-                None
-            } else {
-                Some(data)
-            }
-        },
-    ))
+    Box::new(receiver.filter_map(|received| {
+        let (msg_id, data) = received.ok()?;
+        if msg_id == id {
+            None
+        } else {
+            Some(data)
+        }
+    }))
 }
 
 /*

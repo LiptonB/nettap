@@ -2,11 +2,10 @@ use bytes::Bytes;
 use futures::stream::Stream;
 use std::future::Future;
 use tokio::sync::mpsc;
-use uuid::Uuid;
 
-pub type DataStream = Box<dyn Stream<Item = (Uuid, Bytes)>>;
-pub type NewConnection =
-    Box<dyn FnOnce(mpsc::Sender<Message>, DataStream) -> Box<dyn Future<Output = ()>>>;
+pub type DataStream = Box<dyn Stream<Item = Bytes> + Unpin + Send>;
+type BoxTask = Box<dyn Future<Output = ()> + Unpin + Send>;
+pub type NewConnection = Box<dyn FnOnce(mpsc::Sender<Message>, DataStream) -> BoxTask + Send>;
 
 pub enum Message {
     Data(Bytes),
@@ -28,14 +27,14 @@ pub mod tokio_connection {
 
     pub fn new_tokio_connection<S>(socket: S) -> NewConnection
     where
-        S: AsyncRead + AsyncWrite + Unpin,
+        S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
-        move |sender: mpsc::Sender<Message>, receiver: DataStream| {
-            tokio_connection(sender, receiver, socket)
-        }
+        Box::new(move |sender: mpsc::Sender<Message>, receiver: DataStream| {
+            Box::new(tokio_connection(sender, receiver, socket))
+        })
     }
 
-    pub async fn tokio_connection<R, S>(sender: mpsc::Sender<Bytes>, receiver: R, socket: S)
+    pub async fn tokio_connection<R, S>(sender: mpsc::Sender<Message>, receiver: R, socket: S)
     where
         R: Stream<Item = Bytes> + Unpin,
         S: AsyncRead + AsyncWrite + Unpin,
@@ -48,14 +47,14 @@ pub mod tokio_connection {
         join!(input_fut, output_fut);
     }
 
-    async fn stream_to_sender<S>(stream: S, sender: mpsc::Sender<Bytes>)
+    async fn stream_to_sender<S>(stream: S, sender: mpsc::Sender<Message>)
     where
         S: Stream<Item = Result<BytesMut, std::io::Error>> + Unpin,
     {
         while let Some(next) = stream.next().await {
             match next {
                 Ok(bytes_mut) => {
-                    if let Err(err) = sender.send(bytes_mut.freeze()).await {
+                    if let Err(err) = sender.send(Message::Data(bytes_mut.freeze())).await {
                         error!("Queue error: {}", err);
                         break;
                     }
