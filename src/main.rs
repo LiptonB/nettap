@@ -87,7 +87,7 @@ fn parse_options() -> Result<(bool, SocketAddr)> {
 
 async fn run_main() -> Result<()> {
     let (listen_mode, addr) = parse_options()?;
-    let coordinator = Coordinator::new();
+    let mut coordinator = Coordinator::new();
 
     if listen_mode {
         //listen(&addr, data_sender);

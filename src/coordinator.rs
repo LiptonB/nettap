@@ -28,7 +28,7 @@ impl Coordinator {
         }
     }
 
-    pub async fn run(self) {
+    pub async fn run(mut self) {
         while let Some((sender, message)) = self.incoming.next().await {
             match message {
                 Data(bytes) => {

@@ -48,7 +48,7 @@ pub mod tokio_connection {
         join!(input_fut, output_fut);
     }
 
-    async fn stream_to_sender<S>(stream: S, sender: mpsc::Sender<Message>)
+    async fn stream_to_sender<S>(mut stream: S, mut sender: mpsc::Sender<Message>)
     where
         S: Stream<Item = Result<BytesMut, std::io::Error>> + Unpin,
     {
@@ -67,7 +67,7 @@ pub mod tokio_connection {
         }
     }
 
-    async fn stream_to_sink<S, K>(stream: S, sink: K)
+    async fn stream_to_sink<S, K>(mut stream: S, mut sink: K)
     where
         S: Stream<Item = Bytes> + Unpin,
         K: Sink<Bytes> + Unpin,
