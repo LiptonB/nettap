@@ -1,11 +1,12 @@
 use bytes::Bytes;
 use futures::stream::Stream;
 use std::future::Future;
+use std::pin::Pin;
 use tokio::sync::mpsc;
 
 pub type DataStream = Box<dyn Stream<Item = Bytes> + Unpin + Send>;
-type BoxTask = Box<dyn Future<Output = ()> + Unpin + Send>;
-pub type NewConnection = Box<dyn FnOnce(mpsc::Sender<Message>, DataStream) -> BoxTask + Send>;
+type Task = Pin<Box<dyn Future<Output = ()> + Send>>;
+pub type NewConnection = Box<dyn FnOnce(mpsc::Sender<Message>, DataStream) -> Task + Send>;
 
 pub enum Message {
     Data(Bytes),
@@ -30,7 +31,7 @@ pub mod tokio_connection {
         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
         Box::new(move |sender: mpsc::Sender<Message>, receiver: DataStream| {
-            Box::new(tokio_connection(sender, receiver, socket))
+            Box::pin(tokio_connection(sender, receiver, socket))
         })
     }
 
