@@ -4,7 +4,6 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use structopt::StructOpt;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::prelude::*;
 
 mod connection;
 mod coordinator;
@@ -42,6 +41,12 @@ fn setup_stream<S>(
 async fn connect(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()> {
     let stream = TcpStream::connect(addr).await?;
     coordinator.add_connection(tokio_connection::new_tokio_connection(stream));
+    Ok(())
+}
+
+async fn listen(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()> {
+    let listener = TcpListener::bind(addr).await?;
+    coordinator.add_connection(tokio_connection::new_spawner_connection(listener));
     Ok(())
 }
 
@@ -90,7 +95,7 @@ async fn run_main() -> Result<()> {
     let mut coordinator = Coordinator::new();
 
     if listen_mode {
-        //listen(&addr, data_sender);
+        listen(&addr, &mut coordinator).await?;
     } else {
         connect(&addr, &mut coordinator).await?;
     }

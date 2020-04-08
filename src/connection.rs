@@ -35,6 +35,40 @@ pub mod tokio_connection {
         })
     }
 
+    pub fn new_spawner_connection<S, SS>(spawner: S) -> NewConnection
+    where
+        S: Stream<Item = Result<SS, std::io::Error>> + Unpin + Send + 'static,
+        SS: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    {
+        Box::new(move |sender: mpsc::Sender<Message>, receiver: DataStream| {
+            Box::pin(spawner_connection(sender, receiver, spawner))
+        })
+    }
+
+    async fn spawner_connection<S, SS>(
+        mut sender: mpsc::Sender<Message>,
+        _receiver: DataStream,
+        mut spawner: S,
+    ) where
+        S: Stream<Item = Result<SS, std::io::Error>> + Unpin + Send + 'static,
+        SS: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    {
+        while let Some(stream) = spawner.next().await {
+            match stream {
+                Ok(stream) => {
+                    let connection = new_tokio_connection(stream);
+                    if let Err(err) = sender.send(Message::NewConnection(connection)).await {
+                        error!("Queue error: {}", err);
+                        break;
+                    }
+                }
+                Err(err) => {
+                    error!("Spawner error: {}", err);
+                }
+            }
+        }
+    }
+
     pub async fn tokio_connection<R, S>(sender: mpsc::Sender<Message>, receiver: R, socket: S)
     where
         R: Stream<Item = Bytes> + Unpin,
