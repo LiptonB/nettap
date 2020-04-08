@@ -22,21 +22,6 @@ struct Opt {
     verbosity: Verbosity,
 }
 
-/*
-fn setup_stream<S>(
-    socket: S,
-    data_sender: mpsc::UnboundedSender<Bytes>,
-    data_receiver: mpsc::UnboundedReceiver<Bytes>,
-) where
-    S: AsyncRead + AsyncWrite + Send + 'static,
-{
-    // TODO: Can't we make the function accept these the way they are?
-    let data_sender = data_sender.sink_from_err();
-    let data_receiver = data_receiver.map_err(|nothing: ()| unreachable!());
-    tokio::spawn(tokio_connection(data_sender, data_receiver, socket));
-}
-*/
-
 // TODO: If args are "1 2" why does it succeed in making a SocketAddr?
 async fn connect(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()> {
     let stream = TcpStream::connect(addr).await?;
@@ -49,24 +34,6 @@ async fn listen(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()> 
     coordinator.add_connection(tokio_connection::new_spawner_connection(listener));
     Ok(())
 }
-
-/*
-fn listen(addr: &SocketAddr, data_sender: mpsc::UnboundedSender<Bytes>) -> Result<()> {
-    let listener = TcpListener::bind(addr)?;
-    tokio::spawn(
-        listener
-            .incoming()
-            .map_err(|e| eprintln!("failed to accept socket; error = {:?}", e))
-            .for_each(move |socket| {
-                let data_sender = data_sender.clone();
-                let (sender, receiver) = mpsc::unbounded();
-                setup_stream(socket, data_sender, receiver);
-                Ok(())
-            }),
-    );
-    Ok(())
-}
-*/
 
 fn parse_options() -> Result<(bool, SocketAddr)> {
     let opt = Opt::from_args();
