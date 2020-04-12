@@ -3,7 +3,10 @@ use failure::{bail, Error};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use structopt::StructOpt;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{
+    join,
+    net::{TcpListener, TcpStream},
+};
 
 mod connection;
 mod coordinator;
@@ -67,7 +70,9 @@ async fn run_main() -> Result<()> {
         connect(&addr, &mut coordinator).await?;
     }
 
-    tokio::spawn(coordinator.run());
+    let (join_result,) = join!(tokio::spawn(coordinator.run()));
+    join_result?;
+
     Ok(())
 }
 

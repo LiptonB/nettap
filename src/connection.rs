@@ -19,17 +19,20 @@ pub mod tokio_connection {
         sink::{Sink, SinkExt},
         stream::StreamExt,
     };
-    use log::error;
+    use log::{debug, error};
     use std::marker::Unpin;
     use tokio::{join, prelude::*, stream::Stream, sync::mpsc};
     use tokio_util::codec::{BytesCodec, Framed};
 
     use super::{DataStream, Message, NewConnection};
 
+    // TODO: is it possible to replace this closure with a method call on a struct like the
+    // coordinator.run method? (May need to use async-trait)
     pub fn new_tokio_connection<S>(socket: S) -> NewConnection
     where
         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
+        debug!("new_tokio_connection");
         Box::new(move |sender: mpsc::Sender<Message>, receiver: DataStream| {
             Box::pin(tokio_connection(sender, receiver, socket))
         })
@@ -74,6 +77,7 @@ pub mod tokio_connection {
         R: Stream<Item = Bytes> + Unpin,
         S: AsyncRead + AsyncWrite + Unpin,
     {
+        debug!("setting up tokio_connection");
         let framed = Framed::new(socket, BytesCodec::new());
         let (socket_out, socket_in) = framed.split();
 
@@ -86,9 +90,11 @@ pub mod tokio_connection {
     where
         S: Stream<Item = Result<BytesMut, std::io::Error>> + Unpin,
     {
+        debug!("stream_to_sender starting");
         while let Some(next) = stream.next().await {
             match next {
                 Ok(bytes_mut) => {
+                    debug!("stream_to_sender got bytes");
                     if let Err(err) = sender.send(Message::Data(bytes_mut.freeze())).await {
                         error!("Queue error: {}", err);
                         break;
@@ -99,6 +105,7 @@ pub mod tokio_connection {
                 }
             }
         }
+        debug!("stream_to_sender closing");
     }
 
     async fn stream_to_sink<S, K>(mut stream: S, mut sink: K)
@@ -107,10 +114,13 @@ pub mod tokio_connection {
         K: Sink<Bytes> + Unpin,
         <K as Sink<Bytes>>::Error: std::fmt::Display,
     {
+        debug!("stream_to_sink starting");
         while let Some(bytes) = stream.next().await {
+            debug!("stream_to_sink got bytes");
             if let Err(err) = sink.send(bytes).await {
                 error!("Write error: {}", err);
             }
         }
+        debug!("stream_to_sink closing");
     }
 }

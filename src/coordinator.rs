@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use log::error;
+use log::{debug, error};
 use tokio::{
     stream::{StreamExt, StreamMap},
     sync::{broadcast, mpsc},
@@ -50,6 +50,7 @@ impl Coordinator {
         let output_receiver = filter_receiver(output_receiver, id);
         self.incoming.insert(id, input_receiver);
         tokio::spawn(nc(input_sender, output_receiver));
+        debug!("started connection: {}", id);
     }
 }
 
