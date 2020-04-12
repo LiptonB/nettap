@@ -1,5 +1,5 @@
+use anyhow::{bail, Result};
 use clap_verbosity_flag::Verbosity;
-use failure::{bail, Error};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use structopt::StructOpt;
@@ -12,8 +12,6 @@ mod connection;
 mod coordinator;
 use connection::tokio_connection;
 use coordinator::Coordinator;
-
-type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, StructOpt)]
 struct Opt {
@@ -40,7 +38,9 @@ async fn listen(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()> 
 
 fn parse_options() -> Result<(bool, SocketAddr)> {
     let opt = Opt::from_args();
-    opt.verbosity.setup_env_logger(env!("CARGO_PKG_NAME"))?;
+    opt.verbosity
+        .setup_env_logger(env!("CARGO_PKG_NAME"))
+        .map_err(|e| e.compat())?;
 
     let (address, port): (&str, &str) = if opt.listen {
         match opt.args.as_slice() {

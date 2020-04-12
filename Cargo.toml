@@ -5,9 +5,9 @@ authors = ["Ben Lipton <ben.lipton@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+anyhow = "1.0.28"
 bytes = "0.5.4"
 clap-verbosity-flag = "0.2.0"
-failure = "0.1.5"
 futures = "0.3.0"
 log = "0.4.8"
 structopt = "0.2.18"
