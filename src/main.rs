@@ -4,7 +4,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use structopt::StructOpt;
 use tokio::{
-    join,
+    io, join,
     net::{TcpListener, TcpStream},
 };
 
@@ -26,13 +26,21 @@ struct Opt {
 // TODO: If args are "1 2" why does it succeed in making a SocketAddr?
 async fn connect(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()> {
     let stream = TcpStream::connect(addr).await?;
-    coordinator.add_connection(tokio_connection::new_tokio_connection(stream));
+    let (read, write) = io::split(stream);
+    coordinator.add_connection(tokio_connection::new_tokio_connection(read, write));
     Ok(())
 }
 
 async fn listen(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     coordinator.add_connection(tokio_connection::new_spawner_connection(listener));
+    Ok(())
+}
+
+async fn start_console(coordinator: &mut Coordinator) -> Result<()> {
+    let stdout = io::stdout();
+    let stdin = io::stdin();
+    coordinator.add_connection(tokio_connection::new_tokio_connection(stdin, stdout));
     Ok(())
 }
 
@@ -69,6 +77,7 @@ async fn run_main() -> Result<()> {
     } else {
         connect(&addr, &mut coordinator).await?;
     }
+    start_console(&mut coordinator).await?;
 
     let (join_result,) = join!(tokio::spawn(coordinator.run()));
     join_result?;
