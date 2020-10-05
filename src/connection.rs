@@ -13,17 +13,42 @@ pub enum Message {
     NewConnection(NewConnection),
 }
 
+pub mod stream_connection {
+    use bytes::Bytes;
+    use futures::{future::FutureExt, sink::Sink, stream::Stream};
+    use tokio::sync::mpsc;
+
+    use super::common::*;
+    use super::{DataStream, Message, NewConnection};
+
+    /// Creates a Connection from a Stream of Message and a Sink of Bytes
+    pub fn new<R, W>(read_stream: R, write_sink: W) -> NewConnection
+    where
+        R: Stream<Item = Message> + Unpin + Send + 'static,
+        W: Sink<Bytes> + Unpin + Send + 'static,
+        <W as Sink<Bytes>>::Error: std::fmt::Display,
+    {
+        Box::new(move |sender: mpsc::Sender<Message>, receiver: DataStream| {
+            Box::pin(
+                futures::future::join(
+                    stream_to_sender(read_stream, sender),
+                    stream_to_sink(receiver, write_sink),
+                )
+                .map(|_| ()),
+            )
+        })
+    }
+}
+
 pub mod tokio_connection {
     use bytes::{Bytes, BytesMut};
-    use futures::{
-        sink::{Sink, SinkExt},
-        stream::StreamExt,
-    };
+    use futures::stream::StreamExt;
     use log::{debug, error};
     use std::marker::Unpin;
     use tokio::{io, join, prelude::*, stream::Stream, sync::mpsc};
     use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
 
+    use super::common::*;
     use super::{DataStream, Message, NewConnection};
 
     // TODO: is it possible to replace this closure with a method call on a struct like the
@@ -90,46 +115,59 @@ pub mod tokio_connection {
         W: AsyncWrite + Unpin,
     {
         debug!("setting up tokio_connection");
-        let socket_in = FramedRead::new(read_socket, BytesCodec::new());
+        let socket_in = Box::pin(FramedRead::new(read_socket, BytesCodec::new()).filter_map(
+            |item: Result<BytesMut, _>| async {
+                match item {
+                    Ok(bytes_mut) => Some(Message::Data(bytes_mut.freeze())),
+                    Err(err) => {
+                        error!("Read error: {}", err);
+                        None
+                    }
+                }
+            },
+        ));
         let socket_out = FramedWrite::new(write_socket, BytesCodec::new());
 
         let input_fut = stream_to_sender(socket_in, sender);
         let output_fut = stream_to_sink(receiver, socket_out);
         join!(input_fut, output_fut);
     }
+}
 
-    async fn stream_to_sender<S>(mut stream: S, mut sender: mpsc::Sender<Message>)
+mod common {
+    use futures::{
+        sink::{Sink, SinkExt},
+        stream::{Stream, StreamExt},
+    };
+    use log::{debug, error};
+    use tokio::sync::mpsc;
+
+    /// Forwards a Stream to a tokio::sync::mpsc::Sender of the same item type
+    pub async fn stream_to_sender<Item, S>(mut stream: S, mut sender: mpsc::Sender<Item>)
     where
-        S: Stream<Item = Result<BytesMut, std::io::Error>> + Unpin,
+        S: Stream<Item = Item> + Unpin,
     {
         debug!("stream_to_sender starting");
         while let Some(next) = stream.next().await {
-            match next {
-                Ok(bytes_mut) => {
-                    debug!("stream_to_sender got bytes");
-                    if let Err(err) = sender.send(Message::Data(bytes_mut.freeze())).await {
-                        error!("Queue error: {}", err);
-                        break;
-                    }
-                }
-                Err(err) => {
-                    error!("Read error: {}", err);
-                }
+            if let Err(err) = sender.send(next).await {
+                error!("Queue error: {}", err);
+                break;
             }
         }
         debug!("stream_to_sender closing");
     }
 
-    async fn stream_to_sink<S, K>(mut stream: S, mut sink: K)
+    /// Forwards a Stream to a Sink of the same item type
+    pub async fn stream_to_sink<Item, S, K>(mut stream: S, mut sink: K)
     where
-        S: Stream<Item = Bytes> + Unpin,
-        K: Sink<Bytes> + Unpin,
-        <K as Sink<Bytes>>::Error: std::fmt::Display,
+        S: Stream<Item = Item> + Unpin,
+        K: Sink<Item> + Unpin,
+        <K as Sink<Item>>::Error: std::fmt::Display,
     {
         debug!("stream_to_sink starting");
-        while let Some(bytes) = stream.next().await {
-            debug!("stream_to_sink got bytes");
-            if let Err(err) = sink.send(bytes).await {
+        while let Some(item) = stream.next().await {
+            debug!("stream_to_sink got item");
+            if let Err(err) = sink.send(item).await {
                 error!("Write error: {}", err);
             }
         }

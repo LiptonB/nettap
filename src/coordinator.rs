@@ -45,10 +45,16 @@ impl Coordinator {
 
     pub fn add_connection(&mut self, nc: NewConnection) {
         let (input_sender, input_receiver) = mpsc::channel(CHANNEL_CAPACITY);
+
+        // Deliver messages to this Connection
         let output_receiver = self.broadcast_sender.subscribe();
         let id = Uuid::new_v4();
         let output_receiver = filter_receiver(output_receiver, id);
+
+        // Listen for messages produced by this Connection
         self.incoming.insert(id, input_receiver);
+
+        // Run the Connection
         tokio::spawn(nc(input_sender, output_receiver));
         debug!("started connection: {}", id);
     }
@@ -67,38 +73,30 @@ pub fn filter_receiver(receiver: broadcast::Receiver<(Uuid, Bytes)>, id: Uuid) -
 
 #[cfg(test)]
 mod tests {
+    use futures::stream;
+
+    use crate::connection::*;
     use crate::coordinator::*;
 
-    fn run_future<E: Send>(f: impl Future<Item = (), Error = E> + Send + 'static) {
-        let f = f.map_err(|_| panic!("returned error"));
-        tokio::run(f);
+    #[tokio::test]
+    async fn no_conns_succeeds() {
+        let c = Coordinator::new();
+
+        c.run().await;
+
+        // TODO: do we need an assert here?
     }
 
-    #[test]
-    fn creation_and_wait_succeeds() {
-        let data_rx = stream::empty();
-        let conn_rx = stream::empty();
+    #[tokio::test]
+    async fn send_succeeds() {
+        let mut c = Coordinator::new();
 
-        let c = Coordinator::new(data_rx, conn_rx);
-        run_future(c);
-    }
+        let stream = Box::pin(stream::once(async { Data(Bytes::from("somestr")) }));
+        let (send, mut recv) = futures::channel::mpsc::unbounded();
+        c.add_connection(stream_connection::new(stream, send));
 
-    #[test]
-    fn send_with_no_conns_succeeds() {
-        let data_rx = stream::once(Ok(Bytes::from("somestr")));
-        let conn_rx = stream::empty();
+        c.run().await;
 
-        let c = Coordinator::new(data_rx, conn_rx);
-        run_future(c);
-    }
-
-    #[test]
-    fn send_with_conn_transfers_data() {
-        let data_rx = stream::once(Ok(Bytes::from("somestr")));
-        // TODO
-        let conn_rx = stream::empty();
-
-        let c = Coordinator::new(data_rx, conn_rx);
-        run_future(c);
+        assert_eq!(recv.next().await, Some(Bytes::from("somestr")));
     }
 }
