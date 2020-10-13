@@ -43,10 +43,10 @@ pub mod stream_connection {
 pub mod tokio_connection {
     use bytes::{Bytes, BytesMut};
     use futures::stream::StreamExt;
-    use log::{debug, error};
     use std::marker::Unpin;
     use tokio::{io, join, prelude::*, stream::Stream, sync::mpsc};
     use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
+    use tracing::{debug, error};
 
     use super::common::*;
     use super::{DataStream, Message, NewConnection};
@@ -139,8 +139,8 @@ mod common {
         sink::{Sink, SinkExt},
         stream::{Stream, StreamExt},
     };
-    use log::{debug, error};
     use tokio::sync::mpsc;
+    use tracing::{debug, error};
 
     /// Forwards a Stream to a tokio::sync::mpsc::Sender of the same item type
     pub async fn stream_to_sender<Item, S>(mut stream: S, mut sender: mpsc::Sender<Item>)

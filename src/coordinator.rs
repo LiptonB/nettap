@@ -1,10 +1,10 @@
 use bytes::Bytes;
 use futures::Future;
-use log::{debug, error};
 use tokio::{
     stream::{StreamExt, StreamMap},
     sync::{broadcast, mpsc},
 };
+use tracing::error;
 use uuid::Uuid;
 
 use crate::connection::{
@@ -38,13 +38,16 @@ impl Coordinator {
                     }
                 }
                 NewConnection(nc) => {
-                    self.add_connection(nc);
+                    tokio::spawn(self.add_connection(nc));
                 }
             }
         }
     }
 
-    pub fn add_connection(&mut self, nc: NewConnection) -> impl Future + Send + 'static {
+    pub fn add_connection(
+        &mut self,
+        nc: NewConnection,
+    ) -> impl Future<Output = ()> + Send + 'static {
         let (input_sender, input_receiver) = mpsc::channel(CHANNEL_CAPACITY);
 
         // Deliver messages to this Connection
@@ -84,8 +87,6 @@ mod tests {
         let c = Coordinator::new();
 
         c.run().await;
-
-        // TODO: do we need an assert here?
     }
 
     #[tokio::test]

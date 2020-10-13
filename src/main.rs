@@ -1,5 +1,4 @@
 use anyhow::{bail, Result};
-use clap_verbosity_flag::Verbosity;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use structopt::StructOpt;
@@ -7,6 +6,8 @@ use tokio::{
     io, join,
     net::{TcpListener, TcpStream},
 };
+use tracing;
+use tracing_subscriber;
 
 mod connection;
 mod coordinator;
@@ -19,36 +20,32 @@ struct Opt {
     listen: bool,
     #[structopt(min_values = 1, max_values = 2)]
     args: Vec<String>,
-    #[structopt(flatten)]
-    verbosity: Verbosity,
 }
 
 // TODO: If args are "1 2" why does it succeed in making a SocketAddr?
 async fn connect(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()> {
     let stream = TcpStream::connect(addr).await?;
     let (read, write) = io::split(stream);
-    coordinator.add_connection(tokio_connection::new_tokio_connection(read, write));
+    tokio::spawn(coordinator.add_connection(tokio_connection::new_tokio_connection(read, write)));
     Ok(())
 }
 
 async fn listen(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
-    coordinator.add_connection(tokio_connection::new_spawner_connection(listener));
+    tokio::spawn(coordinator.add_connection(tokio_connection::new_spawner_connection(listener)));
     Ok(())
 }
 
 async fn start_console(coordinator: &mut Coordinator) -> Result<()> {
     let stdout = io::stdout();
     let stdin = io::stdin();
-    coordinator.add_connection(tokio_connection::new_tokio_connection(stdin, stdout));
+    tokio::spawn(coordinator.add_connection(tokio_connection::new_tokio_connection(stdin, stdout)));
     Ok(())
 }
 
 fn parse_options() -> Result<(bool, SocketAddr)> {
     let opt = Opt::from_args();
-    opt.verbosity
-        .setup_env_logger(env!("CARGO_PKG_NAME"))
-        .map_err(|e| e.compat())?;
+    tracing_subscriber::fmt::init();
 
     let (address, port): (&str, &str) = if opt.listen {
         match opt.args.as_slice() {
