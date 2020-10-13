@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use futures::Future;
 use log::{debug, error};
 use tokio::{
     stream::{StreamExt, StreamMap},
@@ -43,7 +44,7 @@ impl Coordinator {
         }
     }
 
-    pub fn add_connection(&mut self, nc: NewConnection) {
+    pub fn add_connection(&mut self, nc: NewConnection) -> impl Future + Send + 'static {
         let (input_sender, input_receiver) = mpsc::channel(CHANNEL_CAPACITY);
 
         // Deliver messages to this Connection
@@ -54,9 +55,8 @@ impl Coordinator {
         // Listen for messages produced by this Connection
         self.incoming.insert(id, input_receiver);
 
-        // Run the Connection
-        tokio::spawn(nc(input_sender, output_receiver));
-        debug!("started connection: {}", id);
+        // Return the Connection future
+        nc(input_sender, output_receiver)
     }
 }
 
@@ -74,6 +74,7 @@ pub fn filter_receiver(receiver: broadcast::Receiver<(Uuid, Bytes)>, id: Uuid) -
 #[cfg(test)]
 mod tests {
     use futures::stream;
+    use tokio::join;
 
     use crate::connection::*;
     use crate::coordinator::*;
@@ -89,14 +90,17 @@ mod tests {
 
     #[tokio::test]
     async fn send_succeeds() {
-        let mut c = Coordinator::new();
+        let mut coord = Coordinator::new();
 
-        let stream = Box::pin(stream::once(async { Data(Bytes::from("somestr")) }));
-        let (send, mut recv) = futures::channel::mpsc::unbounded();
-        c.add_connection(stream_connection::new(stream, send));
+        let send_stream = Box::pin(stream::once(async { Data(Bytes::from("somestr")) }));
+        let (send1, mut recv1) = futures::channel::mpsc::unbounded();
+        let (send2, mut recv2) = futures::channel::mpsc::unbounded();
+        let conn1 = coord.add_connection(stream_connection::new(send_stream, send1));
+        let conn2 = coord.add_connection(stream_connection::new(stream::empty(), send2));
 
-        c.run().await;
+        let (_, _, _, data1, data2) = join!(conn1, conn2, coord.run(), recv1.next(), recv2.next());
 
-        assert_eq!(recv.next().await, Some(Bytes::from("somestr")));
+        assert_eq!(data1, None);
+        assert_eq!(data2, Some(Bytes::from("somestr")));
     }
 }
