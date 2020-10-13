@@ -13,6 +13,7 @@ pub enum Message {
     NewConnection(NewConnection),
 }
 
+#[cfg(test)]
 pub mod stream_connection {
     use bytes::Bytes;
     use futures::{future::FutureExt, sink::Sink, stream::Stream};

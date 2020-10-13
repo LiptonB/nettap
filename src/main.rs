@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use std::net::{SocketAddr, ToSocketAddrs};
 use structopt::StructOpt;
 use tokio::{
-    io, join,
+    io,
     net::{TcpListener, TcpStream},
 };
 use tracing::debug;
@@ -74,8 +74,7 @@ async fn run_main() -> Result<()> {
     }
     start_console(&mut coordinator).await?;
 
-    let (join_result,) = join!(tokio::spawn(coordinator.run()));
-    join_result?;
+    coordinator.run().await;
 
     Ok(())
 }
