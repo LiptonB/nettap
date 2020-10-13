@@ -1,13 +1,11 @@
 use anyhow::{bail, Result};
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::str::FromStr;
 use structopt::StructOpt;
 use tokio::{
     io, join,
     net::{TcpListener, TcpStream},
 };
-use tracing;
-use tracing_subscriber;
+use tracing::debug;
 
 mod connection;
 mod coordinator;
@@ -22,7 +20,6 @@ struct Opt {
     args: Vec<String>,
 }
 
-// TODO: If args are "1 2" why does it succeed in making a SocketAddr?
 async fn connect(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()> {
     let stream = TcpStream::connect(addr).await?;
     let (read, write) = io::split(stream);
@@ -60,9 +57,10 @@ fn parse_options() -> Result<(bool, SocketAddr)> {
         }
     };
 
-    let port = u16::from_str(port)?;
+    let port: u16 = port.parse()?;
     let addr = (address, port).to_socket_addrs()?.next().unwrap();
-    return Ok((opt.listen, addr));
+    debug!("address={:?} port={:?} addr={:?}", address, port, addr);
+    Ok((opt.listen, addr))
 }
 
 async fn run_main() -> Result<()> {
