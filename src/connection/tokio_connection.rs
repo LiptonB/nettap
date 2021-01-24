@@ -66,7 +66,7 @@ async fn spawner_connection<S, SS>(
     }
 }
 
-pub async fn tokio_connection<S, R, W>(
+async fn tokio_connection<S, R, W>(
     sender: mpsc::Sender<Message>,
     receiver: S,
     read_socket: R,
