@@ -6,13 +6,15 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.28"
-bytes = "0.5.4"
+async-stream = "0.3.0"
+bytes = "1.0.1"
 futures = "0.3.0"
 log = "0.4.8"
 structopt = "0.2.18"
-tokio = { version = "0.2.13", features = ["full"] }
+tokio = { version = "1.1.0", features = ["full"] }
+tokio-stream = { version = "0.1.2", features = ["net"] }
 tokio-test = "0.2.1"
-tokio-util = { version = "0.3.1", features = ["codec"] }
+tokio-util = { version = "0.6.2", features = ["codec"] }
 tracing = "0.1.21"
 tracing-subscriber = "0.2.13"
 uuid = { version = "0.8.1", features = ["v4"] }

@@ -1,12 +1,11 @@
 use bytes::Bytes;
 use futures::Future;
-use tokio::{
-    stream::{StreamExt, StreamMap},
-    sync::{broadcast, mpsc},
-};
+use tokio::sync::{broadcast, mpsc};
+use tokio_stream::{wrappers::ReceiverStream, StreamExt, StreamMap};
 use tracing::error;
 use uuid::Uuid;
 
+use crate::broadcast_stream::BroadcastStream;
 use crate::connection::{
     DataStream,
     Message::{self, *},
@@ -16,7 +15,7 @@ use crate::connection::{
 const CHANNEL_CAPACITY: usize = 10;
 
 pub struct Coordinator {
-    incoming: StreamMap<Uuid, mpsc::Receiver<Message>>,
+    incoming: StreamMap<Uuid, ReceiverStream<Message>>,
     broadcast_sender: broadcast::Sender<(Uuid, Bytes)>,
 }
 
@@ -51,19 +50,20 @@ impl Coordinator {
         let (input_sender, input_receiver) = mpsc::channel(CHANNEL_CAPACITY);
 
         // Deliver messages to this Connection
-        let output_receiver = self.broadcast_sender.subscribe();
+        let output_receiver = BroadcastStream::new(self.broadcast_sender.subscribe());
         let id = Uuid::new_v4();
         let output_receiver = filter_receiver(output_receiver, id);
 
         // Listen for messages produced by this Connection
-        self.incoming.insert(id, input_receiver);
+        self.incoming
+            .insert(id, ReceiverStream::new(input_receiver));
 
         // Return the Connection future
         nc(input_sender, output_receiver)
     }
 }
 
-pub fn filter_receiver(receiver: broadcast::Receiver<(Uuid, Bytes)>, id: Uuid) -> DataStream {
+pub fn filter_receiver(receiver: BroadcastStream<(Uuid, Bytes)>, id: Uuid) -> DataStream {
     Box::new(receiver.filter_map(move |received| {
         let (msg_id, data) = received.ok()?;
         if msg_id == id {

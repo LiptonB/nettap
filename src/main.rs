@@ -5,8 +5,10 @@ use tokio::{
     io,
     net::{TcpListener, TcpStream},
 };
+use tokio_stream::wrappers::TcpListenerStream;
 use tracing::debug;
 
+mod broadcast_stream;
 mod connection;
 mod coordinator;
 use connection::tokio_connection;
@@ -29,7 +31,11 @@ async fn connect(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()>
 
 async fn listen(addr: &SocketAddr, coordinator: &mut Coordinator) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
-    tokio::spawn(coordinator.add_connection(tokio_connection::new_spawner_connection(listener)));
+    tokio::spawn(
+        coordinator.add_connection(tokio_connection::new_spawner_connection(
+            TcpListenerStream::new(listener),
+        )),
+    );
     Ok(())
 }
 

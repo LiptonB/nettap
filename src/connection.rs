@@ -42,10 +42,15 @@ pub mod stream_connection {
 }
 
 pub mod tokio_connection {
-    use bytes::{Bytes, BytesMut};
+    use bytes::Bytes;
     use futures::stream::StreamExt;
     use std::marker::Unpin;
-    use tokio::{io, join, prelude::*, stream::Stream, sync::mpsc};
+    use tokio::{
+        io::{self, AsyncRead, AsyncWrite},
+        join,
+        sync::mpsc,
+    };
+    use tokio_stream::Stream;
     use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
     use tracing::{debug, error};
 
@@ -81,7 +86,7 @@ pub mod tokio_connection {
     }
 
     async fn spawner_connection<S, SS>(
-        mut sender: mpsc::Sender<Message>,
+        sender: mpsc::Sender<Message>,
         _receiver: DataStream,
         mut spawner: S,
     ) where
@@ -117,7 +122,7 @@ pub mod tokio_connection {
     {
         debug!("setting up tokio_connection");
         let socket_in = Box::pin(FramedRead::new(read_socket, BytesCodec::new()).filter_map(
-            |item: Result<BytesMut, _>| async {
+            |item: Result<bytes::BytesMut, std::io::Error>| async {
                 match item {
                     Ok(bytes_mut) => Some(Message::Data(bytes_mut.freeze())),
                     Err(err) => {
@@ -144,7 +149,7 @@ mod common {
     use tracing::{debug, error};
 
     /// Forwards a Stream to a tokio::sync::mpsc::Sender of the same item type
-    pub async fn stream_to_sender<Item, S>(mut stream: S, mut sender: mpsc::Sender<Item>)
+    pub async fn stream_to_sender<Item, S>(mut stream: S, sender: mpsc::Sender<Item>)
     where
         S: Stream<Item = Item> + Unpin,
     {
