@@ -94,3 +94,52 @@ async fn tokio_connection<S, R, W>(
     let output_fut = stream_to_sink(receiver, socket_out);
     join!(input_fut, output_fut);
 }
+
+pub mod new {
+    use anyhow::Result;
+    use tokio::io::{self, AsyncRead, AsyncWrite, DuplexStream};
+
+    pub struct TokioConnection<R, W>
+    where
+        R: AsyncRead + Unpin,
+        W: AsyncWrite + Unpin,
+    {
+        reader: R,
+        writer: W,
+        stream: DuplexStream,
+    }
+
+    pub struct ConnectionData {
+        stream: DuplexStream,
+    }
+
+    impl<R, W> TokioConnection<R, W>
+    where
+        R: AsyncRead + Unpin,
+        W: AsyncWrite + Unpin,
+    {
+        pub fn new(reader: R, writer: W) -> (Self, ConnectionData) {
+            let (connection_end, coordinator_end) = io::duplex(4096);
+
+            (
+                Self {
+                    reader,
+                    writer,
+                    stream: connection_end,
+                },
+                ConnectionData {
+                    stream: coordinator_end,
+                },
+            )
+        }
+
+        pub async fn run(mut self) -> Result<()> {
+            let (mut readstream, mut writestream) = io::split(self.stream);
+            let _ = tokio::try_join! {
+                io::copy(&mut self.reader, &mut writestream),
+                io::copy(&mut readstream, &mut self.writer),
+            }?;
+            Ok(())
+        }
+    }
+}
